@@ -10,20 +10,20 @@ from pscan import pscan
 
 """
 
-This file closely follows the mamba_simple.py from the official Mamba implementation, and the mamba-minimal by @johnma2006.
-The major differences are :
--the convolution is done with torch.nn.Conv1d
--the selective scan is done in PyTorch
+该文件紧密遵循了官方 Mamba 实现中的 mamba_simple.py 以及 @johnma2006 的 mamba-minimal。
+主要区别是：
+- 卷积操作使用了 torch.nn.Conv1d
+- 选择性扫描是在 PyTorch 中完成的
 
-A sequential version of the selective scan is also available for comparison.
+一个用于对比的顺序版选择性扫描也可用。
 
-- A Mamba model is composed of several layers, which are ResidualBlock.
-- A ResidualBlock is composed of a MambaBlock, a normalization, and a residual connection : ResidualBlock(x) = mamba(norm(x)) + x
-- This leaves us with the MambaBlock : its input x is (B, L, D) and its outputs y is also (B, L, D) (B=batch size, L=seq len, D=model dim).
-First, we expand x into (B, L, 2*ED) (where E is usually 2) and split it into x and z, each (B, L, ED).
-Then, we apply the short 1d conv to x, followed by an activation function (silu), then the SSM.
-We then multiply it by silu(z).
-See Figure 3 of the paper (page 8) for a visual representation of a MambaBlock.
+- Mamba 模型由多个层组成，每一层是一个 ResidualBlock（残差块）。
+- ResidualBlock 由一个 MambaBlock、归一化操作和残差连接组成：ResidualBlock(x) = mamba(norm(x)) + x
+- 这使得我们关注 MambaBlock：它的输入 x 是 (B, L, D)，输出 y 也是 (B, L, D) （B=批大小，L=序列长度，D=模型维度）。
+首先，我们将 x 扩展为 (B, L, 2*ED)（其中 E 通常为 2），并将其分成 x 和 z，每个为 (B, L, ED)。
+然后，对 x 应用短 1D 卷积，之后是激活函数（silu），然后是 SSM。
+接着，将其与 silu(z) 相乘。
+可参见论文第 3 图（第 8 页）以获得 MambaBlock 的可视化表示。
 
 """
 
