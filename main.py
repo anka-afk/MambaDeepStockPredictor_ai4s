@@ -90,7 +90,7 @@ def PredictWithData(trainX, trainy, testX):
     return yhat
 
 # 读取数据
-data = pd.read_csv('stock/stock data/' + args.ts_code + '.csv')  # 根据您的数据文件名调整
+data = pd.read_csv('stock/stock data/' + args.ts_code + '.csv')
 
 # 将 'trade_date' 列转换为日期时间格式
 data['trade_date'] = pd.to_datetime(data['trade_date'], format='%Y%m%d')
