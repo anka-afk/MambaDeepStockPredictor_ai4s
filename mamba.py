@@ -79,6 +79,10 @@ class Mamba(nn.Module):
         self.norm_f = RMSNorm(config.d_model)
 
     def forward(self, x):
+        # 如果输入是二维的，添加一个时间步维度
+        if x.dim() == 2:
+            x = x.unsqueeze(1)
+        
         # x 的形状: (B, L, D)
         # B: 批大小, L: 序列长度, D: 模型维度
 
@@ -89,7 +93,8 @@ class Mamba(nn.Module):
         # 最终输出进行归一化处理
         x = self.norm_f(x)
 
-        return x
+        # 如果需要，可以在这里去掉时间步维度
+        return x.squeeze(1)
 
     def step(self, x, caches):
         # x 的形状: (B, L, D)
@@ -202,7 +207,7 @@ class MambaBlock(nn.Module):
         # x 的形状: (B, L, D)
         # B: 批大小, L: 序列长度, D: 模型维度
 
-        # 输出 y 的形状: (B, L, D)
+        # 输出 y 的形: (B, L, D)
 
         _, L, _ = x.shape
 
@@ -326,7 +331,7 @@ class MambaBlock(nn.Module):
             x.size(0), self.config.d_inner, self.config.d_state, device=deltaA.device
         )  # (B, ED, N)
 
-        # 保存每个时间步的 h 值
+        # 保��每个时间步的 h 值
         hs = []
 
         # 逐步执行顺序扫描
@@ -428,7 +433,7 @@ class MambaBlock(nn.Module):
         # 投影 x，生成 delta、B、C
         deltaBC = self.x_proj(x)  # 形状: (B, dt_rank+2*N)
 
-        # 拆分 deltaBC 为 delta、B 和 C
+        # ��分 deltaBC 为 delta、B 和 C
         delta, B, C = torch.split(
             deltaBC,
             [self.config.dt_rank, self.config.d_state, self.config.d_state],
@@ -485,3 +490,6 @@ class RMSNorm(nn.Module):
         )
 
         return output
+
+
+
