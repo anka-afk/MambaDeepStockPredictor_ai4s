@@ -14,12 +14,12 @@ register_matplotlib_converters()
 parser = argparse.ArgumentParser()
 parser.add_argument('--use-cuda', default=False, help='是否使用 CUDA 进行训练。')
 parser.add_argument('--seed', type=int, default=1, help='随机种子。')
-parser.add_argument('--epochs', type=int, default=300, help='训练的轮数。')
+parser.add_argument('--epochs', type=int, default=100, help='训练的轮数。')
 parser.add_argument('--lr', type=float, default=0.01, help='学习率。')
 parser.add_argument('--wd', type=float, default=1e-5, help='权重衰减（参数的 L2 损失）。')
 parser.add_argument('--hidden', type=int, default=16, help='表示的维度。')
 parser.add_argument('--layer', type=int, default=2, help='层的数量。')
-parser.add_argument('--n-test', type=int, default=100, help='测试集的大小。')
+parser.add_argument('--n-test', type=int, default=300, help='测试集的大小。')
 parser.add_argument('--ts-code', type=str, default='000001.SZ', help='股票代码。')
 
 args = parser.parse_args()
@@ -90,14 +90,17 @@ def PredictWithData(trainX, trainy, testX):
     return yhat
 
 # 读取数据
-data = pd.read_csv('stock/stock data/' + args.ts_code + '.csv')
+data = pd.read_csv('stock/stock data/' + args.ts_code + '.csv')  # 根据您的数据文件名调整
 
 # 将 'trade_date' 列转换为日期时间格式
 data['trade_date'] = pd.to_datetime(data['trade_date'], format='%Y%m%d')
 data = data.sort_values('trade_date').reset_index(drop=True)
 
-# 计算 'ratechg'，使用前复权收盘价计算变化率
-data['ratechg'] = data['change']/ data['pre_close']
+# 提取 'close' 列
+close = data.pop('close').values
+
+# 计算 'ratechg'
+ratechg = data['pct_chg'].apply(lambda x: 0.01 * x).values
 
 # 删除不需要的列
 data.drop(columns=['pre_close', 'change', 'pct_chg'], inplace=True)
@@ -116,27 +119,37 @@ dat = data[features].values
 
 # 划分训练集和测试集
 trainX, testX = dat[:-args.n_test, :], dat[-args.n_test:, :]
-trainy = data['ratechg'][:-args.n_test].values
+trainy = ratechg[:-args.n_test]
 
 # 模型训练和预测
 predictions = PredictWithData(trainX, trainy, testX)
 
 # 评估和可视化
 time = data['trade_date'][-args.n_test:]
-actual_ratechg = data['ratechg'][-args.n_test:].values
+data1 = close[-args.n_test:]
+finalpredicted_stock_price = []
+pred = close[-args.n_test - 1]
+for i in range(args.n_test):
+    pred = close[-args.n_test - 1 + i] * (1 + predictions[i])
+    finalpredicted_stock_price.append(pred)
 
 dateinf(data['trade_date'], args.n_test)
 print('MSE RMSE MAE R2')
-evaluation_metric(actual_ratechg, predictions)
+evaluation_metric(data1, finalpredicted_stock_price)
 
-# 绘图部分，展示实际和预测的收盘价变化率
+# 在绘图之前，确保时间序列是正确排序的
+data = data.sort_values('trade_date')
+
+# 绘图部分
 plt.figure(figsize=(10, 6))
-plt.plot(time, actual_ratechg, label='Actual Rate Change')
-plt.plot(time, predictions, label='Predicted Rate Change')
-plt.title('Stock Rate Change Prediction')
+plt.plot(data['trade_date'][-args.n_test:], data1, label='Stock Price')
+plt.plot(data['trade_date'][-args.n_test:], finalpredicted_stock_price, label='Predicted Stock Price')
+plt.title('Stock Price Prediction')
 plt.xlabel('Time', fontsize=12, verticalalignment='top')
-plt.ylabel('Rate Change', fontsize=14, horizontalalignment='center')
+plt.ylabel('Close', fontsize=14, horizontalalignment='center')
 plt.legend()
 plt.xticks(rotation=45)
 plt.tight_layout()
 plt.show()
+
+
