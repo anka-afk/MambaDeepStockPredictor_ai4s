@@ -19,7 +19,7 @@ parser.add_argument('--lr', type=float, default=0.01, help='学习率。')
 parser.add_argument('--wd', type=float, default=1e-5, help='权重衰减（参数的 L2 损失）。')
 parser.add_argument('--hidden', type=int, default=16, help='表示的维度。')
 parser.add_argument('--layer', type=int, default=2, help='层的数量。')
-parser.add_argument('--n-test', type=int, default=300, help='测试集的大小。')
+parser.add_argument('--n-test', type=int, default=100, help='测试集的大小。')
 parser.add_argument('--ts-code', type=str, default='000001.SZ', help='股票代码。')
 
 args = parser.parse_args()
