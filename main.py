@@ -97,7 +97,7 @@ data['trade_date'] = pd.to_datetime(data['trade_date'], format='%Y%m%d')
 data = data.sort_values('trade_date').reset_index(drop=True)
 
 # 计算 'ratechg'，使用前复权收盘价计算变化率
-data['ratechg'] = (data['close_qfq'] - data['pre_close']) / data['pre_close']
+data['ratechg'] = data['change']/ data['pre_close']
 
 # 删除不需要的列
 data.drop(columns=['pre_close', 'change', 'pct_chg'], inplace=True)
