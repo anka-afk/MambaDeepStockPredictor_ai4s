@@ -23,7 +23,6 @@ from pscan import pscan
 首先，我们将 x 扩展为 (B, L, 2*ED)（其中 E 通常为 2），并将其分成 x 和 z，每个为 (B, L, ED)。
 然后，对 x 应用短 1D 卷积，之后是激活函数（silu），然后是 SSM。
 接着，将其与 silu(z) 相乘。
-可参见论文第 3 图（第 8 页）以获得 MambaBlock 的可视化表示。
 
 """
 
