@@ -8,11 +8,12 @@ import torch.nn.functional as F
 from mamba import Mamba, MambaConfig
 import argparse
 from pandas.plotting import register_matplotlib_converters
+import glob
 
 register_matplotlib_converters()
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--use-cuda', default=False, help='是否使用 CUDA 进行训练。')
+parser.add_argument('--use-cuda', default=True, help='是否使用 CUDA 进行训练。')
 parser.add_argument('--seed', type=int, default=1, help='随机种子。')
 parser.add_argument('--epochs', type=int, default=100, help='训练的轮数。')
 parser.add_argument('--lr', type=float, default=0.01, help='学习率。')
@@ -20,7 +21,7 @@ parser.add_argument('--wd', type=float, default=1e-5, help='权重衰减（参�
 parser.add_argument('--hidden', type=int, default=16, help='表示的维度。')
 parser.add_argument('--layer', type=int, default=2, help='层的数量。')
 parser.add_argument('--n-test', type=int, default=300, help='测试集的大小。')
-parser.add_argument('--ts-code', type=str, default='000001.SZ', help='股票代码。')
+parser.add_argument('--ts-code', type=str, default='000166.SZ', help='股票代码。')
 
 args = parser.parse_args()
 args.cuda = args.use_cuda and torch.cuda.is_available()
@@ -86,70 +87,89 @@ def PredictWithData(trainX, trainy, testX):
     mat = clf(xv)
     if args.cuda:
         mat = mat.cpu()
-    yhat = mat.detach().numpy().flatten()
-    return yhat
+    return mat.detach().numpy().flatten()[0]
 
-# 读取数据
-data = pd.read_csv('stock/stock data/' + args.ts_code + '.csv')
+# 替换原有的数据处理和预测部分
+data_list = []  # 用于存储所有股票的预测结果
 
-# 将 'trade_date' 列转换为日期时间格式
-data['trade_date'] = pd.to_datetime(data['trade_date'], format='%Y%m%d')
-data = data.sort_values('trade_date').reset_index(drop=True)
+# 读取所有股票代码
+stock_files = glob.glob('stock/stock data/*.csv')  # 需要在文件开头添加 import glob
 
-# 提取 'close' 列
-close = data.pop('close').values
+for stock_file in stock_files:
+    ts_code = stock_file.split('/')[-1].replace('.csv', '')
+    
+    # 读取数据
+    data = pd.read_csv(stock_file)
+    data['trade_date'] = pd.to_datetime(data['trade_date'], format='%Y%m%d')
+    data = data.sort_values('trade_date').reset_index(drop=True)
+    
+    # 提取特征和目标值
+    ratechg = data['pct_chg'].apply(lambda x: 0.01 * x).values
+    
+    # 删除不需要的列
+    data.drop(columns=['pre_close', 'change', 'pct_chg', 'close'], inplace=True)
+    
+    # 提取特征数据
+    features = [
+        # 基础交易数据
+        'open', 'high', 'low', 'vol', 'amount',
+        
+        # 市场表现指标
+        'turnover_rate', 'turnover_rate_f', 'volume_ratio',
+        
+        # 估值指标
+        'pe', 'pe_ttm', 'pb', 'ps', 'ps_ttm', 
+        
+        # 公司基本面
+        'total_share', 'float_share', 'free_share', 'total_mv', 'circ_mv',
+        
+        # 技术指标 (只选择不依赖未来数据的指标)
+        'ma_bfq_5', 'ma_bfq_10', 'ma_bfq_20', 'ma_bfq_30',
+        'ema_bfq_5', 'ema_bfq_10', 'ema_bfq_20',
+        'macd_dif_bfq', 'macd_dea_bfq', 'macd_bfq',
+        'kdj_k_bfq', 'kdj_d_bfq',
+        'rsi_bfq_6', 'rsi_bfq_12',
+        'boll_upper_bfq', 'boll_mid_bfq', 'boll_lower_bfq',
+        'vr_bfq',
+        'obv_bfq'
+    ]
+   
+    def handle_outliers(df, columns, n_sigmas=3):
+        """处理异常值"""
+        for col in columns:
+            mean = df[col].mean()
+            std = df[col].std()
+            df[col] = df[col].clip(mean - n_sigmas * std, mean + n_sigmas * std)
+        return df
 
-# 计算 'ratechg'
-ratechg = data['pct_chg'].apply(lambda x: 0.01 * x).values
+    # 在填充缺失值之前先处理异常值
+    data = handle_outliers(data, features)
 
-# 删除不需要的列
-data.drop(columns=['pre_close', 'change', 'pct_chg'], inplace=True)
+    # 然后进行缺失值填充
+    for feature in features:
+        data[feature] = data[feature].fillna(method='ffill').fillna(method='bfill')
+   
+    dat = data[features].values
+    
+    # 使用所有历史数据进行训练
+    trainX, testX = dat[:-1, :], dat[-1:, :]  # 最后一天的数据用于预测
+    trainy = ratechg[:-1]
+    
+    # 预测下一个交易日的涨跌幅
+    pred_pct_chg = PredictWithData(trainX, trainy, testX) * 100  # 转换回百分比
+    
+    # 存储结果
+    data_list.append({
+        'ts_code': ts_code,
+        'pct_chg': pred_pct_chg
+    })
 
-# 明确选择特征列
-features = ['open', 'high', 'low', 'vol', 'amount', 'turnover_rate', 'volume_ratio', 'pe', 'pb', 'ps', 
-            'total_share', 'float_share', 'free_share', 'total_mv', 'circ_mv']
+# 生成结果表格
+result_df = pd.DataFrame(data_list)
+print(result_df)
+# 可选：保存到文件
+result_df.to_csv('predictions.csv', index=False)
 
-# 检查特征列是否存在
-for col in features:
-    if col not in data.columns:
-        print(f"Column {col} not found in data")
-
-# 提取特征数据
-dat = data[features].values
-
-# 划分训练集和测试集
-trainX, testX = dat[:-args.n_test, :], dat[-args.n_test:, :]
-trainy = ratechg[:-args.n_test]
-
-# 模型训练和预测
-predictions = PredictWithData(trainX, trainy, testX)
-
-# 评估和可视化
-time = data['trade_date'][-args.n_test:]
-data1 = close[-args.n_test:]
-finalpredicted_stock_price = []
-pred = close[-args.n_test - 1]
-for i in range(args.n_test):
-    pred = close[-args.n_test - 1 + i] * (1 + predictions[i])
-    finalpredicted_stock_price.append(pred)
-
-dateinf(data['trade_date'], args.n_test)
-print('MSE RMSE MAE R2')
-evaluation_metric(data1, finalpredicted_stock_price)
-
-# 在绘图之前，确保时间序列是正确排序的
-data = data.sort_values('trade_date')
-
-# 绘图部分
-plt.figure(figsize=(10, 6))
-plt.plot(data['trade_date'][-args.n_test:], data1, label='Stock Price')
-plt.plot(data['trade_date'][-args.n_test:], finalpredicted_stock_price, label='Predicted Stock Price')
-plt.title('Stock Price Prediction')
-plt.xlabel('Time', fontsize=12, verticalalignment='top')
-plt.ylabel('Close', fontsize=14, horizontalalignment='center')
-plt.legend()
-plt.xticks(rotation=45)
-plt.tight_layout()
-plt.show()
+# 删除原有的评估和绘图代码
 
 
