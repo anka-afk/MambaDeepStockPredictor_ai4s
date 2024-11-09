@@ -9,6 +9,7 @@ from mamba import Mamba, MambaConfig
 import argparse
 from pandas.plotting import register_matplotlib_converters
 import glob
+import os
 
 register_matplotlib_converters()
 
@@ -60,7 +61,7 @@ class Net(nn.Module):
         x = self.mamba(x)
         return x.flatten()
 
-def PredictWithData(trainX, trainy, testX):
+def PredictWithData(trainX, trainy, testX, ts_code):
     clf = Net(len(trainX[0]), 1)
     opt = torch.optim.Adam(clf.parameters(), lr=args.lr, weight_decay=args.wd)
     xt = torch.from_numpy(trainX).float().unsqueeze(0)
@@ -71,6 +72,8 @@ def PredictWithData(trainX, trainy, testX):
         xt = xt.cuda()
         xv = xv.cuda()
         yt = yt.cuda()
+    
+    best_loss = float('inf')
     for e in range(args.epochs):
         clf.train()
         z = clf(xt)
@@ -78,6 +81,17 @@ def PredictWithData(trainX, trainy, testX):
         opt.zero_grad()
         loss.backward()
         opt.step()
+        
+        # 保存最佳模型
+        if loss.item() < best_loss:
+            best_loss = loss.item()
+            # 确保models目录存在
+            os.makedirs('models', exist_ok=True)
+            # 清理文件名，移除任何可能的路径分隔符
+            clean_ts_code = os.path.basename(ts_code).replace('\\', '').replace('/', '')
+            # 保存模型
+            torch.save(clf.state_dict(), os.path.join('models', f'{clean_ts_code}_model.pth'))
+            
         if e % 10 == 0 and e != 0:
             print('Epoch %d | Loss: %.4f' % (e, loss.item()))
 
@@ -94,7 +108,7 @@ data_list = []  # 用于存储所有股票的预测结果
 stock_files = glob.glob('stock/merged_stock data/*.csv')  # 需要在文件开头添加 import glob
 
 for stock_file in stock_files:
-    ts_code = stock_file.split('/')[-1].replace('.csv', '')
+    ts_code = os.path.basename(stock_file).replace('.csv', '')
     
     # 读取数据
     data = pd.read_csv(stock_file)
@@ -164,7 +178,7 @@ for stock_file in stock_files:
     trainy = ratechg[:-1]
     
     # 预测下一个交易日的涨跌幅
-    pred_pct_chg = PredictWithData(trainX, trainy, testX) * 100  # 转换回百分比
+    pred_pct_chg = PredictWithData(trainX, trainy, testX, ts_code) * 100  # 转换回百分比
     
     # 存储结果
     data_list.append({
