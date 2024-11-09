@@ -8,7 +8,6 @@ import torch.nn.functional as F
 from mamba import Mamba, MambaConfig
 import argparse
 from pandas.plotting import register_matplotlib_converters
-import glob
 
 register_matplotlib_converters()
 
@@ -87,89 +86,114 @@ def PredictWithData(trainX, trainy, testX):
     mat = clf(xv)
     if args.cuda:
         mat = mat.cpu()
-    return mat.detach().numpy().flatten()[0]
+    yhat = mat.detach().numpy().flatten()
+    return yhat
 
-# 替换原有的数据处理和预测部分
-data_list = []  # 用于存储所有股票的预测结果
+# 读取数据
+data = pd.read_csv('stock/stock data/' + args.ts_code + '.csv')
 
-# 读取所有股票代码
-stock_files = glob.glob('stock/stock data/*.csv')  # 需要在文件开头添加 import glob
+# 将 'trade_date' 列转换为日期时间格式
+data['trade_date'] = pd.to_datetime(data['trade_date'], format='%Y%m%d')
+data = data.sort_values('trade_date').reset_index(drop=True)
 
-for stock_file in stock_files:
-    ts_code = stock_file.split('/')[-1].replace('.csv', '')
-    
-    # 读取数据
-    data = pd.read_csv(stock_file)
-    data['trade_date'] = pd.to_datetime(data['trade_date'], format='%Y%m%d')
-    data = data.sort_values('trade_date').reset_index(drop=True)
-    
-    # 提取特征和目标值
-    ratechg = data['pct_chg'].apply(lambda x: 0.01 * x).values
-    
-    # 删除不需要的列
-    data.drop(columns=['pre_close', 'change', 'pct_chg', 'close'], inplace=True)
-    
-    # 提取特征数据
-    features = [
-        # 基础交易数据
-        'open', 'high', 'low', 'vol', 'amount',
-        
-        # 市场表现指标
-        'turnover_rate', 'turnover_rate_f', 'volume_ratio',
-        
-        # 估值指标
-        'pe', 'pe_ttm', 'pb', 'ps', 'ps_ttm', 
-        
-        # 公司基本面
-        'total_share', 'float_share', 'free_share', 'total_mv', 'circ_mv',
-        
-        # 技术指标 (只选择不依赖未来数据的指标)
-        'ma_bfq_5', 'ma_bfq_10', 'ma_bfq_20', 'ma_bfq_30',
-        'ema_bfq_5', 'ema_bfq_10', 'ema_bfq_20',
-        'macd_dif_bfq', 'macd_dea_bfq', 'macd_bfq',
-        'kdj_k_bfq', 'kdj_d_bfq',
-        'rsi_bfq_6', 'rsi_bfq_12',
-        'boll_upper_bfq', 'boll_mid_bfq', 'boll_lower_bfq',
-        'vr_bfq',
-        'obv_bfq'
-    ]
-   
-    def handle_outliers(df, columns, n_sigmas=3):
-        """处理异常值"""
-        for col in columns:
-            mean = df[col].mean()
-            std = df[col].std()
-            df[col] = df[col].clip(mean - n_sigmas * std, mean + n_sigmas * std)
-        return df
+# 提取 'close' 列
+close = data.pop('close').values
 
-    # 在填充缺失值之前先处理异常值
-    data = handle_outliers(data, features)
+# 计算 'ratechg'
+ratechg = data['pct_chg'].apply(lambda x: 0.01 * x).values
 
-    # 然后进行缺失值填充
-    for feature in features:
-        data[feature] = data[feature].fillna(method='ffill').fillna(method='bfill')
-   
-    dat = data[features].values
-    
-    # 使用所有历史数据进行训练
-    trainX, testX = dat[:-1, :], dat[-1:, :]  # 最后一天的数据用于预测
-    trainy = ratechg[:-1]
-    
-    # 预测下一个交易日的涨跌幅
-    pred_pct_chg = PredictWithData(trainX, trainy, testX) * 100  # 转换回百分比
-    
-    # 存储结果
-    data_list.append({
-        'ts_code': ts_code,
-        'pct_chg': pred_pct_chg
-    })
+# 删除不需要的列
+data.drop(columns=['pre_close', 'change', 'pct_chg'], inplace=True)
 
-# 生成结果表格
-result_df = pd.DataFrame(data_list)
-print(result_df)
-# 可选：保存到文件
-result_df.to_csv('predictions.csv', index=False)
+# 修改特征列选择
+features = [
+    # 基础交易数据
+    'open', 'high', 'low', 'vol', 'amount',
+    
+    # 市场表现指标
+    'turnover_rate', 'turnover_rate_f', 'volume_ratio',
+    
+    # 估值指标
+    'pe', 'pe_ttm', 'pb', 'ps', 'ps_ttm', 
+    
+    # 公司基本面
+    'total_share', 'float_share', 'free_share', 'total_mv', 'circ_mv',
+    
+    # 技术指标 (只选择不依赖未来数据的指标)
+    'ma_bfq_5', 'ma_bfq_10', 'ma_bfq_20', 'ma_bfq_30',
+    'ema_bfq_5', 'ema_bfq_10', 'ema_bfq_20',
+    'macd_dif_bfq', 'macd_dea_bfq', 'macd_bfq',
+    'kdj_k_bfq', 'kdj_d_bfq',
+    'rsi_bfq_6', 'rsi_bfq_12',
+    'boll_upper_bfq', 'boll_mid_bfq', 'boll_lower_bfq',
+    'vr_bfq',
+    'obv_bfq'
+]
 
-# 删除原有的评估和绘图代码
+# 检查特征列是否存在
+available_features = []
+for col in features:
+    if col in data.columns:
+        available_features.append(col)
+    else:
+        print(f"警告: 特征 {col} 在数据中不存在，将被忽略")
+
+# 使用可用的特征
+features = available_features
+
+# 打印处理前的缺失值情况
+# print("处理前的缺失值统计：")
+# print(data[features].isnull().sum())
+
+# 对每个特征使用时序相关的填充方法
+for feature in features:
+    # 1. 首先使用前向填充(forward fill)处理连续缺失值
+    data[feature] = data[feature].fillna(method='ffill')
+    
+    # 2. 对于序列开始处的缺失值，使用后向填充(backward fill)
+    data[feature] = data[feature].fillna(method='bfill')
+
+# 打印处理后的缺失值情况
+# print("\n处理后的缺失值统计：")
+# print(data[features].isnull().sum())
+
+
+# 提取特征数据
+dat = data[features].values
+
+# 划分训练集和测试集
+trainX, testX = dat[:-args.n_test, :], dat[-args.n_test:, :]
+trainy = ratechg[:-args.n_test]
+
+# 模型训练和预测
+predictions = PredictWithData(trainX, trainy, testX)
+
+# 评估和可视化
+time = data['trade_date'][-args.n_test:]
+data1 = close[-args.n_test:]
+finalpredicted_stock_price = []
+pred = close[-args.n_test - 1]
+for i in range(args.n_test):
+    pred = close[-args.n_test - 1 + i] * (1 + predictions[i])
+    finalpredicted_stock_price.append(pred)
+
+dateinf(data['trade_date'], args.n_test)
+print('MSE RMSE MAE R2')
+evaluation_metric(data1, finalpredicted_stock_price)
+
+# 在绘图之前，确保时间序列是正确排序的
+data = data.sort_values('trade_date')
+
+# 绘图部分
+plt.figure(figsize=(10, 6))
+plt.plot(data['trade_date'][-args.n_test:], data1, label='Stock Price')
+plt.plot(data['trade_date'][-args.n_test:], finalpredicted_stock_price, label='Predicted Stock Price')
+plt.title('Stock Price Prediction')
+plt.xlabel('Time', fontsize=12, verticalalignment='top')
+plt.ylabel('Close', fontsize=14, horizontalalignment='center')
+plt.legend()
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.show()
 
 
