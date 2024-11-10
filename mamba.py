@@ -330,7 +330,7 @@ class MambaBlock(nn.Module):
             x.size(0), self.config.d_inner, self.config.d_state, device=deltaA.device
         )  # (B, ED, N)
 
-        # 保��每个时间步的 h 值
+        # 每个时间步的 h 值
         hs = []
 
         # 逐步执行顺序扫描
@@ -370,7 +370,7 @@ class MambaBlock(nn.Module):
     当 h 为 None 时，selective scan 函数会检测到它，并从 h=0 开始。
     `torch.zeros()` 不会有问题（这与直接提供输入效果相同，因为 conv1d 是带填充的）。
 
-    由于每一层都需要一个这样的缓存变量，我们存储一个 caches 对象，该对象实际上是一个缓存对象的列表。（参见 mamba_lm.py）
+    由于每一层都需要一个这样的缓存变量，我们存储一个 caches 对象，该对象实际上是一个缓存对象的列表。
     """
 
     def step(self, x, cache):
@@ -432,7 +432,7 @@ class MambaBlock(nn.Module):
         # 投影 x，生成 delta、B、C
         deltaBC = self.x_proj(x)  # 形状: (B, dt_rank+2*N)
 
-        # ��分 deltaBC 为 delta、B 和 C
+        # 拆分 deltaBC 为 delta、B 和 C
         delta, B, C = torch.split(
             deltaBC,
             [self.config.dt_rank, self.config.d_state, self.config.d_state],

@@ -8,6 +8,25 @@ import torch.nn.functional as F
 from mamba import Mamba, MambaConfig
 import argparse
 from pandas.plotting import register_matplotlib_converters
+import matplotlib.font_manager as fm
+
+plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'SimSun', 'KaiTi', 'FangSong']
+plt.rcParams['axes.unicode_minus'] = False
+
+try:
+    font_path = 'C:/Windows/Fonts/msyh.ttc'
+    chinese_font = fm.FontProperties(fname=font_path)
+except:
+    try:
+        font_path = '/System/Library/Fonts/PingFang.ttc'
+        chinese_font = fm.FontProperties(fname=font_path)
+    except:
+        try:
+            font_path = '/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf'
+            chinese_font = fm.FontProperties(fname=font_path)
+        except:
+            print("警告：未能找到合适的中文字体文件")
+            chinese_font = None
 
 register_matplotlib_converters()
 
@@ -20,7 +39,7 @@ parser.add_argument('--wd', type=float, default=1e-5, help='权重衰减（参�
 parser.add_argument('--hidden', type=int, default=16, help='表示的维度。')
 parser.add_argument('--layer', type=int, default=2, help='层的数量。')
 parser.add_argument('--n-test', type=int, default=300, help='测试集的大小。')
-parser.add_argument('--ts-code', type=str, default='000166.SZ', help='股票代码。')
+parser.add_argument('--ts-code', type=str, default='601988.SH', help='股票代码。')
 
 args = parser.parse_args()
 args.cuda = args.use_cuda and torch.cuda.is_available()
@@ -89,23 +108,17 @@ def PredictWithData(trainX, trainy, testX):
     yhat = mat.detach().numpy().flatten()
     return yhat
 
-# 读取数据
-data = pd.read_csv('stock/stock data/' + args.ts_code + '.csv')
+data = pd.read_csv('stock/merged_stock data/' + args.ts_code + '.csv')
 
-# 将 'trade_date' 列转换为日期时间格式
 data['trade_date'] = pd.to_datetime(data['trade_date'], format='%Y%m%d')
 data = data.sort_values('trade_date').reset_index(drop=True)
 
-# 提取 'close' 列
 close = data.pop('close').values
 
-# 计算 'ratechg'
 ratechg = data['pct_chg'].apply(lambda x: 0.01 * x).values
 
-# 删除不需要的列
 data.drop(columns=['pre_close', 'change', 'pct_chg'], inplace=True)
 
-# 修改特征列选择
 features = [
     # 基础交易数据
     'open', 'high', 'low', 'vol', 'amount',
@@ -119,7 +132,7 @@ features = [
     # 公司基本面
     'total_share', 'float_share', 'free_share', 'total_mv', 'circ_mv',
     
-    # 技术指标 (只选择不依赖未来数据的指标)
+    # 技术指标
     'ma_bfq_5', 'ma_bfq_10', 'ma_bfq_20', 'ma_bfq_30',
     'ema_bfq_5', 'ema_bfq_10', 'ema_bfq_20',
     'macd_dif_bfq', 'macd_dea_bfq', 'macd_bfq',
@@ -130,7 +143,6 @@ features = [
     'obv_bfq'
 ]
 
-# 检查特征列是否存在
 available_features = []
 for col in features:
     if col in data.columns:
@@ -138,14 +150,12 @@ for col in features:
     else:
         print(f"警告: 特征 {col} 在数据中不存在，将被忽略")
 
-# 使用可用的特征
 features = available_features
 
 # 打印处理前的缺失值情况
 # print("处理前的缺失值统计：")
 # print(data[features].isnull().sum())
 
-# 对每个特征使用时序相关的填充方法
 for feature in features:
     # 1. 首先使用前向填充(forward fill)处理连续缺失值
     data[feature] = data[feature].fillna(method='ffill')
@@ -158,7 +168,6 @@ for feature in features:
 # print(data[features].isnull().sum())
 
 
-# 提取特征数据
 dat = data[features].values
 
 # 划分训练集和测试集
@@ -181,19 +190,72 @@ dateinf(data['trade_date'], args.n_test)
 print('MSE RMSE MAE R2')
 evaluation_metric(data1, finalpredicted_stock_price)
 
-# 在绘图之前，确保时间序列是正确排序的
 data = data.sort_values('trade_date')
 
-# 绘图部分
-plt.figure(figsize=(10, 6))
-plt.plot(data['trade_date'][-args.n_test:], data1, label='Stock Price')
-plt.plot(data['trade_date'][-args.n_test:], finalpredicted_stock_price, label='Predicted Stock Price')
-plt.title('Stock Price Prediction')
-plt.xlabel('Time', fontsize=12, verticalalignment='top')
-plt.ylabel('Close', fontsize=14, horizontalalignment='center')
-plt.legend()
-plt.xticks(rotation=45)
+plt.style.use('seaborn')
+plt.rcParams['figure.figsize'] = (15, 8)
+plt.rcParams['lines.linewidth'] = 2
+
+fig, ax = plt.subplots()
+
+ax.plot(data['trade_date'][-args.n_test:], data1, 
+        label='实际股价', 
+        color='#2E86C1',
+        alpha=0.8)
+ax.plot(data['trade_date'][-args.n_test:], finalpredicted_stock_price, 
+        label='预测股价', 
+        color='#E74C3C',
+        linestyle='--',
+        alpha=0.8)
+
+ax.grid(True, linestyle='--', alpha=0.7)
+
+if chinese_font:
+    ax.set_title(f'{args.ts_code} 股价预测分析', 
+                fontproperties=chinese_font,
+                fontsize=16, 
+                pad=20, 
+                fontweight='bold')
+    ax.set_xlabel('时间', fontproperties=chinese_font, fontsize=12)
+    ax.set_ylabel('股价 (元)', fontproperties=chinese_font, fontsize=12)
+    ax.legend(loc='upper left', 
+             prop=chinese_font,
+             frameon=True, 
+             fancybox=True, 
+             shadow=True, 
+             fontsize=10)
+else:
+    ax.set_title(f'{args.ts_code} Stock Price Prediction', 
+                fontsize=16, 
+                pad=20, 
+                fontweight='bold')
+    ax.set_xlabel('Time', fontsize=12)
+    ax.set_ylabel('Price (CNY)', fontsize=12)
+    ax.legend(loc='upper left', 
+             frameon=True, 
+             fancybox=True, 
+             shadow=True, 
+             fontsize=10)
+
+plt.xticks(rotation=30, ha='right')
+ax.xaxis.set_major_locator(plt.MaxNLocator(10))
+
 plt.tight_layout()
+
+if chinese_font:
+    fig.text(0.99, 0.01, 'MDSP', 
+             fontproperties=chinese_font,
+             ha='right', 
+             va='bottom', 
+             alpha=0.4, 
+             fontsize=8)
+else:
+    fig.text(0.99, 0.01, 'MDSP', 
+             ha='right', 
+             va='bottom', 
+             alpha=0.4, 
+             fontsize=8)
+
 plt.show()
 
 

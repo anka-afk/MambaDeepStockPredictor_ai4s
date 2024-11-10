@@ -82,14 +82,10 @@ def PredictWithData(trainX, trainy, testX, ts_code):
         loss.backward()
         opt.step()
         
-        # 保存最佳模型
         if loss.item() < best_loss:
             best_loss = loss.item()
-            # 确保models目录存在
             os.makedirs('models', exist_ok=True)
-            # 清理文件名，移除任何可能的路径分隔符
             clean_ts_code = os.path.basename(ts_code).replace('\\', '').replace('/', '')
-            # 保存模型
             torch.save(clf.state_dict(), os.path.join('models', f'{clean_ts_code}_model.pth'))
             
         if e % 10 == 0 and e != 0:
@@ -101,27 +97,21 @@ def PredictWithData(trainX, trainy, testX, ts_code):
         mat = mat.cpu()
     return mat.detach().numpy().flatten()[0]
 
-# 替换原有的数据处理和预测部分
-data_list = []  # 用于存储所有股票的预测结果
+data_list = []
 
-# 读取所有股票代码
-stock_files = glob.glob('stock/merged_stock data/*.csv')  # 需要在文件开头添加 import glob
+stock_files = glob.glob('stock/merged_stock data/*.csv')
 
 for stock_file in stock_files:
     ts_code = os.path.basename(stock_file).replace('.csv', '')
     
-    # 读取数据
     data = pd.read_csv(stock_file)
     data['trade_date'] = pd.to_datetime(data['trade_date'], format='%Y%m%d')
     data = data.sort_values('trade_date').reset_index(drop=True)
     
-    # 提取特征和目标值
     ratechg = data['pct_chg'].apply(lambda x: 0.01 * x).values
     
-    # 删除不需要的列
     data.drop(columns=['pre_close', 'change', 'pct_chg', 'close'], inplace=True)
     
-    # 提取特征数据
     features = [
         # 基础交易数据
         'open', 'high', 'low', 'vol', 'amount',
@@ -146,15 +136,14 @@ for stock_file in stock_files:
         'obv_bfq'
     ]
     
-    # 检查并移除完全缺失的特征
     valid_features = []
     for feature in features:
-        if not data[feature].isna().all():  # 如果该列不是全部缺失
+        if not data[feature].isna().all():
             valid_features.append(feature)
         else:
             print(f"警告：特征 {feature} 在股票 {ts_code} 中完全缺失，将被移除")
     
-    features = valid_features  # 更新特征列表
+    features = valid_features
 
     def handle_outliers(df, columns, n_sigmas=3):
         """处理异常值"""
@@ -164,34 +153,26 @@ for stock_file in stock_files:
             df[col] = df[col].clip(mean - n_sigmas * std, mean + n_sigmas * std)
         return df
 
-    # 在填充缺失值之前先处理异常值
     data = handle_outliers(data, features)
 
-    # 然后进行缺失值填充
     for feature in features:
         data[feature] = data[feature].fillna(method='ffill').fillna(method='bfill')
    
     dat = data[features].values
     
-    # 使用所有历史数据进行训练
-    trainX, testX = dat[:-1, :], dat[-1:, :]  # 最后一天的数据用于预测
+    trainX, testX = dat[:-1, :], dat[-1:, :]
     trainy = ratechg[:-1]
     
-    # 预测下一个交易日的涨跌幅
-    pred_pct_chg = PredictWithData(trainX, trainy, testX, ts_code) * 100  # 转换回百分比
+    pred_pct_chg = PredictWithData(trainX, trainy, testX, ts_code) * 100
     
-    # 存储结果
     data_list.append({
         'ts_code': ts_code,
         'pct_chg': pred_pct_chg
     })
 
-# 生成结果表格
 result_df = pd.DataFrame(data_list)
 print(result_df)
-# 可选：保存到文件
 result_df.to_csv('predictions.csv', index=False)
 
-# 删除原有的评估和绘图代码
 
 

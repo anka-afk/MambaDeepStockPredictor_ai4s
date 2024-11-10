@@ -5,7 +5,6 @@ import torch.nn.functional as F
 
 """
 这是在 PyTorch 中实现的并行扫描操作（Blelloch 版本）。
-请参阅 docs/pscan.ipynb 以获取有关此实现的详细解释。
 """
 
 
